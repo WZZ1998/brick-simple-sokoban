@@ -1,6 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Lib
-    ( someFunc
+    ( runBrickSimpleSokoban
     ) where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import UI(runMyApplication)
+
+runBrickSimpleSokoban :: IO ()
+runBrickSimpleSokoban = runMyApplication
