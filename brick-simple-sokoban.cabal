@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Sokoban
       Lib
       UI
   other-modules:
@@ -34,6 +35,12 @@ library
   build-depends:
       base >=4.7 && <5
     , brick
+    , vty
+    , containers
+    , extra
+    , lens
+    , random
+    , transformers
   default-language: Haskell2010
 
 executable brick-simple-sokoban-exe
