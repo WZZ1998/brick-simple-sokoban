@@ -16,12 +16,12 @@ data InitData = InitData {
   ,wallBrickPos :: [Point]
 } deriving(Show, Read)
 
-inlineSampleInitData :: [InitData]
-inlineSampleInitData = [sample2, sample1]
-  where 
-    sample1 = InitData "Hard" 3 3 (0,0) [(-1,0),(1,0),(0,-2)] [(1,2),(2,-1),(0,-2)] [(1,1),(1,-1),(-1,-1),(-1,1)]
-    sample2 = InitData "Medium" 3 3 (-1,1) 
-          [(-1,0),(0,0),(1,0),(-1,-1)]  [(0,1),(0,2), (-1,2),(-2,2)] [(-2,0),(1,1),(1,-1)]
+-- inlineSampleInitData :: [InitData]
+-- inlineSampleInitData = [sample2, sample1]
+--   where 
+--     sample1 = InitData "Hard" 3 3 (0,0) [(-1,0),(1,0),(0,-2)] [(1,2),(2,-1),(0,-2)] [(1,1),(1,-1),(-1,-1),(-1,1)]
+--     sample2 = InitData "Medium" 3 3 (-1,1) 
+--           [(-1,0),(0,0),(1,0),(-1,-1)]  [(0,1),(0,2), (-1,2),(-2,2)] [(-2,0),(1,1),(1,-1)]
 
 addBorderProperly :: InitData -> InitData
 addBorderProperly o = o { wallBrickPos = oldWPos ++ bounds}
@@ -95,13 +95,16 @@ data WallBrick = WallBrick {
   positionOfWallBrick :: Point
  }
 
-initialWorld :: StdGen -> World
-initialWorld gen = ww 
+initialWorld :: String -> StdGen -> World
+initialWorld initDataStr gen = ww 
   where
     ww = launchWorld GameReady rnds properData 0
     (r0:rnds) = randomRs (0,20) gen
-    properData = map addBorderProperly inlineSampleInitData
-    
+    properData = map addBorderProperly $ rInitData initDataStr
+
+rInitData :: String -> [InitData]
+rInitData = read 
+
 restartWorld :: World -> World
 restartWorld w = launchWorld GameRunning (rnds w) (allInitGameData w) (currentInitGameDataIx w)
 

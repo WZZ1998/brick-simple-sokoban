@@ -18,10 +18,15 @@ build-type:     Simple
 extra-source-files:
     README.md
     ChangeLog.md
+    
+data-dir: resources
+data-files: initData.txt
 
 source-repository head
   type: git
-  location: https://github.com/WZZ1998/brick-simple-sokoban
+  location: c
+
+
 
 library
   exposed-modules:
@@ -32,6 +37,8 @@ library
       Paths_brick_simple_sokoban
   hs-source-dirs:
       src
+
+
   build-depends:
       base >=4.7 && <5
     , brick

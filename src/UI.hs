@@ -28,6 +28,7 @@ import Data.Sequence (Seq)
 import Data.List
 import qualified Data.Sequence as S
 import System.Random
+import Paths_brick_simple_sokoban
 
 data Tick = Tick
 type Name = ()
@@ -43,12 +44,14 @@ app = App { appDraw = drawUI
 
 runMyApplication :: IO()
 runMyApplication = do
+  realFileName <- getDataFileName "initData.txt"
+  initDataStr <- readFile realFileName
   gen <- getStdGen
   chan <- newBChan 10
   forkIO $ forever $ do
     writeBChan chan Tick
     threadDelay 250000 -- decides how fast world moves , micro-second
-  let w = initialWorld gen
+  let w = initialWorld initDataStr gen
   let builder = V.mkVty V.defaultConfig
   initialVty <- builder 
   void $ customMain initialVty builder (Just chan) app w
@@ -105,7 +108,7 @@ handleEvent w (VtyEvent (V.EvKey (V.KChar 'q') []))
   | state w == GameFinished || state w == GameAborted = continue 
                 $ changeNewDataWorld (currentInitGameDataIx w) w
   | otherwise = continue $ w{state = GameReady}
-handleEvent w (VtyEvent (V.EvKey V.KEsc []))        = halt w
+-- handleEvent w (VtyEvent (V.EvKey V.KEsc []))        = halt w
 handleEvent w _                                     = continue w
 
 
@@ -114,14 +117,24 @@ handleEvent w _                                     = continue w
 drawUI :: World -> [Widget Name]
 drawUI w = case state w of
   GameReady -> drawWelcome w
-  _ ->[ C.center $ padTop (Pad 0) (drawStats w) <+> (padLeft (Pad 4) $ drawGrid w )]
+  _ ->[ C.center $ infoAreaW <+> playAreaW <=> instrAreaW]
+      where infoAreaW = padTop (Pad 0) (drawStats w)
+            playAreaW = padLeft (Pad 4) $ drawGrid w
+            instrAreaW = padLeft (Pad 5) $ padTop (Pad 2) $ drawIns $ state w
 
+drawIns :: GameState -> Widget Name
+drawIns st = str 
+  $ case st of
+        GameAborted -> "play again <Enter> | back to select <q>"
+        GameFinished -> "play again <Enter> | back to select <q>"
+        GameSelecting -> "start <Enter> | previous <j> | next <k> | return <q>"
+        GameRunning -> "Up <w> Down <s> Left <a> Right <d> | abort game <q>"
 
 drawWelcome :: World -> [Widget Name]
 drawWelcome w = [ C.center $ vBox [C.hCenter welcomePaint, padTop (Pad 3) (welcomeText1 <=> welcomeText2)] ]
   where 
     welcomeText1 = C.hCenter $ hLimit (34 * 2) $ str "Welcome to Sokoban!"
-    welcomeText2 = C.hCenter $ hLimit (34 * 2) $ str "press <enter> for new game | <q> to exit."
+    welcomeText2 = C.hCenter $ hLimit (34 * 2) $ str "Press <Enter> for new game | <q> to exit."
     welcomePaint = hBox (map dummyDraw "s o k o b a n" )
 drawStats :: World -> Widget Name
 drawStats w = hLimit 25 $ vBox usingStats
@@ -171,7 +184,7 @@ drawTime n = withBorderStyle BS.unicodeRounded
 drawSlogan ::  GameState -> Int -> Widget Name
 drawSlogan st tk
   | st == GameAborted = withAttr gameAbortedAttr $ C.hCenter $ str "GAME ABORT"
-  | st == GameFinished = withAttr gameFinishedAttr $ C.hCenter $ str "GAME FINISH"
+  | st == GameFinished = withAttr gameFinishedAttr $ C.hCenter $ str "GAME SUCCESS"
   | st == GameSelecting = withAttr gameSelectingAttr $ C.hCenter $ str
         $ if (tk `div` 4 `mod` 2) == 0 then "SELECTING..." else "        "
   | st == GameRunning = withAttr gameRunningAttr $ C.hCenter $ str 
