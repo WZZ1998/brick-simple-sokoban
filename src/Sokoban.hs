@@ -7,23 +7,21 @@ import System.Random
 type Point = (Int, Int)
 
 data InitData = InitData {
-  hWidth :: Int
+  level :: String
+  ,hWidth :: Int
   ,hHeight :: Int
   ,manPo :: Point
   ,boxPos :: [Point]
   ,holePos :: [Point]
   ,wallBrickPos :: [Point]
-}
+} deriving(Show, Read)
 
-inlineSampleInitData :: InitData
-inlineSampleInitData = InitData 3 3 (-1,1)
-   [(-1,0),(0,0),(1,0),(-1,-1)]  [(0,1),(0,2), (-1,2),(-2,2)] [(-2,0),(1,1),(1,-1)]
-gameBoardHalfWidth :: Int
-gameBoardHalfWidth = 3
-
-
-gameBoardHalfHeight :: Int
-gameBoardHalfHeight = 9
+inlineSampleInitData :: [InitData]
+inlineSampleInitData = [sample2, sample1]
+  where 
+    sample1 = InitData "Hard" 3 3 (0,0) [(-1,0),(1,0),(0,-2)] [(1,2),(2,-1),(0,-2)] [(1,1),(1,-1),(-1,-1),(-1,1)]
+    sample2 = InitData "Medium" 3 3 (-1,1) 
+          [(-1,0),(0,0),(1,0),(-1,-1)]  [(0,1),(0,2), (-1,2),(-2,2)] [(-2,0),(1,1),(1,-1)]
 
 addBorderProperly :: InitData -> InitData
 addBorderProperly o = o { wallBrickPos = oldWPos ++ bounds}
@@ -47,6 +45,7 @@ fixedBoxesPositions :: [Point]
 fixedBoxesPositions = [(-4,1), (-4,3),(-4,7)]
 
 data GameState = GameReady
+ | GameSelecting
  | GameRunning
  | GameFinished
  | GameAborted
@@ -66,6 +65,8 @@ data World = World {
  ,wallBricks :: [WallBrick]
  ,areaWidth :: Int
  ,areaHeight :: Int
+ ,currentLevel :: String
+ ,runningTicks :: Int
 }
 
 data Direction = DirectUp
@@ -95,27 +96,26 @@ data WallBrick = WallBrick {
  }
 
 initialWorld :: StdGen -> World
-initialWorld gen = ww {state = GameReady}
+initialWorld gen = ww 
   where
-    ww = launchWorld rnds properData rix
-    rix = r0 * r0 `mod` (length properData)
+    ww = launchWorld GameReady rnds properData 0
     (r0:rnds) = randomRs (0,20) gen
-    properData = [addBorderProperly inlineSampleInitData]
+    properData = map addBorderProperly inlineSampleInitData
     
 restartWorld :: World -> World
-restartWorld w = launchWorld (rnds w) (allInitGameData w) (currentInitGameDataIx w)
+restartWorld w = launchWorld GameRunning (rnds w) (allInitGameData w) (currentInitGameDataIx w)
 
-changeNewDataWorld :: World -> World
-changeNewDataWorld w = launchWorld rnds' ad rix
+changeNewDataWorld :: Int -> World -> World
+changeNewDataWorld ix w = launchWorld GameSelecting rnds' ad ix
   where 
-    rix = r0 * r0 `mod` (length ad)
     ad = allInitGameData w
     (r0:rnds') = rnds w
     
-launchWorld :: [RandomNumber] -> [InitData] -> Int -> World
-launchWorld rnds ad index = World rnds' ad index  GameRunning man boxes holes wallBricks w h
+launchWorld :: GameState ->  [RandomNumber] -> [InitData] -> Int -> World
+launchWorld st rnds ad index = World rnds' ad index st man boxes holes wallBricks w h lv 0
   where 
-    (r1:r2:rnds') = rnds 
+    (r1:r2:rnds') = rnds
+    lv = level iData
     man = mkMan $ manPo iData
     boxes = mkBoxes $ boxPos iData
     holes = mkHoles $ holePos iData
@@ -144,8 +144,11 @@ mkWallBrick positionPoint  = WallBrick positionPoint
 
 processTimePassing :: World -> World
 processTimePassing w 
- | state w == GameRunning = if judgeFinishedWorld w then w {state = GameFinished } else w
+ | state w == GameRunning = 
+      if judgeFinishedWorld w then w {state = GameFinished } else w {runningTicks = tk + 1}
+ | state w == GameSelecting = w {runningTicks = tk + 1}
  | otherwise = w
+      where tk = runningTicks w
  -- where w' = w {man = m'}
  -- m' = m { colorOfMan = if colorOrig == red then yellow else red}
  -- colorOrig = colorOfMan m

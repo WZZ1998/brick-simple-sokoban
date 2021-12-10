@@ -10,11 +10,12 @@ import Brick
   , customMain, neverShowCursor
   , continue, halt
   , hLimit, vLimit, vBox, hBox
-  , padRight, padLeft, padTop, padAll, Padding(..)
+  , padRight, padLeft, padTop, padAll, padLeftRight, padTopBottom, Padding(..)
   , withBorderStyle
   , str
   , attrMap, withAttr, emptyWidget, AttrName, on, fg
   , (<+>)
+  , (<=>)
   )
 import Data.Maybe(fromJust)
 import Brick.BChan (newBChan, writeBChan)
@@ -46,7 +47,7 @@ runMyApplication = do
   chan <- newBChan 10
   forkIO $ forever $ do
     writeBChan chan Tick
-    threadDelay 100000 -- decides how fast your game moves
+    threadDelay 250000 -- decides how fast world moves , micro-second
   let w = initialWorld gen
   let builder = V.mkVty V.defaultConfig
   initialVty <- builder 
@@ -73,9 +74,27 @@ handleEvent w (VtyEvent (V.EvKey (V.KChar 'd') []))
   | state w == GameRunning = continue $ processManMoveAction DirectRight w mman
   | otherwise = continue w
     where mman = man w
+
+handleEvent w (VtyEvent (V.EvKey (V.KChar 'j') []))
+  | state w == GameSelecting = 
+        if cix > 0 then continue $ changeNewDataWorld (cix - 1) w else continue w
+  | otherwise = continue w
+  where 
+    cix = currentInitGameDataIx w
+
+handleEvent w (VtyEvent (V.EvKey (V.KChar 'k') []))
+  | state w == GameSelecting = 
+        if cix < (dLen - 1) then continue $ changeNewDataWorld (cix + 1) w else continue w
+  | otherwise = continue w
+  where 
+    dLen = length (allInitGameData w)
+    cix = currentInitGameDataIx w
+
 handleEvent w (VtyEvent (V.EvKey V.KEnter []))
-  | state w == GameReady = continue $ changeNewDataWorld w
-  | state w == GameFinished || state w == GameAborted = continue 
+  | state w == GameReady = continue $ changeNewDataWorld 0 w
+  | state w == 
+    GameFinished || state w == GameAborted || state w == GameSelecting = 
+      continue 
       $ restartWorld w
   | otherwise = continue w
     where areaW = areaWidth w
@@ -83,6 +102,8 @@ handleEvent w (VtyEvent (V.EvKey V.KEnter []))
 handleEvent w (VtyEvent (V.EvKey (V.KChar 'q') []))
   | state w == GameReady = halt w
   | state w == GameRunning = continue $ w {state = GameAborted}
+  | state w == GameFinished || state w == GameAborted = continue 
+                $ changeNewDataWorld (currentInitGameDataIx w) w
   | otherwise = continue $ w{state = GameReady}
 handleEvent w (VtyEvent (V.EvKey V.KEsc []))        = halt w
 handleEvent w _                                     = continue w
@@ -93,46 +114,79 @@ handleEvent w _                                     = continue w
 drawUI :: World -> [Widget Name]
 drawUI w = case state w of
   GameReady -> drawWelcome w
-  _ ->[ C.center $ padRight (Pad 2) (drawStats w) <+> drawGrid w ]
+  _ ->[ C.center $ padTop (Pad 0) (drawStats w) <+> (padLeft (Pad 4) $ drawGrid w )]
 
 
 drawWelcome :: World -> [Widget Name]
-drawWelcome w = [str "welcome to sokoban. press 'enter' for new game. 'q' to exit."]
-
+drawWelcome w = [ C.center $ vBox [C.hCenter welcomePaint, padTop (Pad 3) (welcomeText1 <=> welcomeText2)] ]
+  where 
+    welcomeText1 = C.hCenter $ hLimit (34 * 2) $ str "Welcome to Sokoban!"
+    welcomeText2 = C.hCenter $ hLimit (34 * 2) $ str "press <enter> for new game | <q> to exit."
+    welcomePaint = hBox (map dummyDraw "s o k o b a n" )
 drawStats :: World -> Widget Name
-drawStats w = hLimit 20
-  $ vBox [ drawSteps (steps $ man w)
-         , padTop (Pad 2) $ drawSlogan (state w)
-         ]
-
+drawStats w = hLimit 25 $ vBox usingStats
+  where usingStats
+          | state w == GameSelecting = normalStats
+          | otherwise  = normalStats ++ runningStats
+        normalStats = [ padAll (3) $ drawSlogan  (state w) (runningTicks w), drawLevel $ currentLevel w]
+        runningStats = [drawSteps ( steps $ man w) ,drawTime $ runningTicks w]
 -- helper
 
 drawManPosition :: Point -> Widget Name
 drawManPosition p = withBorderStyle BS.unicodeBold
   $ B.borderWithLabel (str "pos")
   $ C.hCenter
-  $ padAll 2
+  --  $ padTopBottom 1
+  $ padLeftRight 2
   $ str $ show p
+
+drawLevel :: String -> Widget Name
+drawLevel l = withBorderStyle BS.unicodeRounded
+  $ B.borderWithLabel (str "Level")
+  $ C.hCenter
+  --  $ padTopBottom 1
+  $ padLeftRight 2
+  $ paintOnLevel l
+  where paintOnLevel l = case l of
+          "Medium" -> withAttr mediumLvAttr $ str l
+          "Easy" -> withAttr easyLvAttr $ str l
+          _ -> withAttr hardLvAttr $ str l
 
 drawSteps :: Int -> Widget Name
 drawSteps n = withBorderStyle BS.unicodeRounded
   $ B.borderWithLabel (str "Steps")
   $ C.hCenter
-  $ padAll 1
+ --  $ padTopBottom 1
+  $ padLeftRight 2
   $ str $ show n
 
-drawSlogan :: GameState -> Widget Name
-drawSlogan st 
-  | st == GameAborted = withAttr gameAbortedAttr $ C.hCenter $ str "ABORT GAME"
+drawTime :: Int -> Widget Name
+drawTime n = withBorderStyle BS.unicodeRounded
+  $ B.borderWithLabel (str "Time (s)")
+  $ C.hCenter
+--  $ padTopBottom 1
+  $ padLeftRight 2
+  $ str $ show (n `div` 4)
+
+drawSlogan ::  GameState -> Int -> Widget Name
+drawSlogan st tk
+  | st == GameAborted = withAttr gameAbortedAttr $ C.hCenter $ str "GAME ABORT"
   | st == GameFinished = withAttr gameFinishedAttr $ C.hCenter $ str "GAME FINISH"
+  | st == GameSelecting = withAttr gameSelectingAttr $ C.hCenter $ str
+        $ if (tk `div` 4 `mod` 2) == 0 then "SELECTING..." else "        "
+  | st == GameRunning = withAttr gameRunningAttr $ C.hCenter $ str 
+        $ if (tk `div` 2 `mod` 2) == 0 then "Sokoban!" else "        "
   | otherwise = emptyWidget
+    
 
 
 drawGrid :: World -> Widget Name
 drawGrid w = withBorderStyle BS.unicodeRounded
-  $ B.borderWithLabel (str "Sokoban!")
+  $ B.borderWithLabel (str $ "Stage: " ++ showN )
   $ vBox rows
   where
+    showN = if stageN < 10 then "0" ++ show stageN else show stageN
+    stageN = currentInitGameDataIx w
     rows         = [hBox $ cellsInRow r | r <- reverse [(- halfH)..halfH]]
     cellsInRow y = [drawPoint (x, y) | x <- [(-halfW)..halfW]]
     drawPoint    =  drawPointFromWorld w
@@ -210,6 +264,22 @@ manRightSquare = vBox [str "---\\", str "---/"]
 wallBrickSquare :: Widget Name
 wallBrickSquare = bigSquare
 
+dummyDraw :: Char -> Widget Name
+dummyDraw c = case c of
+  's' -> dummyProcess [[0,1,1,1],[1,0,0,0],[0,1,1,0],[0,0,0,1],[1,1,1,0]]
+  'o' -> dummyProcess [[1,1,1,1],[1,0,0,1],[1,0,0,1],[1,0,0,1],[1,1,1,1]]
+  'k' -> dummyProcess [[1,0,0,1],[1,0,1,0],[1,1,0,0],[1,0,1,0],[1,0,0,1]]
+  'b' -> dummyProcess [[1,0,0,0],[1,0,0,0],[1,1,1,1],[1,0,0,1],[1,1,1,1]]
+  'a' -> dummyProcess [[1,1,1,1],[1,0,0,1],[1,1,1,1],[1,0,0,1],[1,0,0,1]]
+  'n' -> dummyProcess [[1,1,1,1],[1,0,0,1],[1,0,0,1],[1,0,0,1],[1,0,0,1]]
+  ' ' -> dummyProcess $ replicate 5 [0]
+  _ -> dummyProcess $ replicate 5 [1,1,1,1]
+
+
+dummyProcess :: [[Int]] -> Widget Name
+dummyProcess grid = vBox $ map f grid
+  where f arr = hBox $ map (\v -> if v == 1 then withAttr welcomeCharAttr oneS else oneS) arr
+
 boxColor :: V.Color
 boxColor = V.rgbColor 247 159 58
 
@@ -226,16 +296,33 @@ floorColor = V.rgbColor 214 206 158
 clearRedColor :: V.Color
 clearRedColor = V.rgbColor 255 0 0
 
+welcomeCharColor :: V.Color
+welcomeCharColor = V.rgbColor 253 126 125
+
+hardLvColor :: V.Color
+hardLvColor = V.rgbColor 227 23 13
+
+mediumLvColor :: V.Color
+mediumLvColor = V.rgbColor 255 97 3
+
+manColor :: V.Color
+manColor = V.rgbColor 0 112 205
 theMap :: AttrMap
 theMap = attrMap V.defAttr
-  [ (manAttr, V.black `on` V.yellow)
+  [ (manAttr, V.black `on` manColor)
   , (boxAttr, ( V.white `on` boxColor )`V.withStyle` V.bold)
   , (okBoxAttr, ( clearRedColor `on` okBoxColor )`V.withStyle` V.bold)
   , (holeAttr,holeColor `on` floorColor `V.withStyle` V.bold)
   , (wallBrickAttr, V.black `on` wallBrickColor)
   , (gameAbortedAttr, fg V.red `V.withStyle` V.bold)
   , (gameFinishedAttr, fg V.green `V.withStyle` V.bold)
+  , (gameSelectingAttr, fg V.blue `V.withStyle` V.bold)
+  , (gameRunningAttr, fg boxColor `V.withStyle` V.bold)
   , (emptyAttr, V.white `on` floorColor)
+  , (welcomeCharAttr, V.black `on` welcomeCharColor)
+  , (hardLvAttr, fg hardLvColor)
+  , (easyLvAttr, fg V.green)
+  , (mediumLvAttr, fg mediumLvColor)
   ]
 
 gameFinishedAttr :: AttrName
@@ -244,10 +331,26 @@ gameFinishedAttr = "gameFinished"
 gameAbortedAttr :: AttrName
 gameAbortedAttr = "gameAborted"
 
-manAttr, boxAttr, okBoxAttr, holeAttr, wallBrickAttr, emptyAttr :: AttrName
+gameSelectingAttr :: AttrName
+gameSelectingAttr = "gameSelecting"
+
+gameRunningAttr :: AttrName
+gameRunningAttr = "gameRunning"
+
+manAttr, 
+  boxAttr, okBoxAttr, 
+  holeAttr, 
+  wallBrickAttr, 
+  emptyAttr, 
+  welcomeCharAttr,
+  hardLvAttr,easyLvAttr,mediumLvAttr :: AttrName
 manAttr = "manAttr"
 holeAttr = "holeAttr"
 boxAttr = "boxAttr"
 okBoxAttr = "okBoxAttr"
 wallBrickAttr = "wallBrickAttr"
 emptyAttr = "emptyAttr"
+welcomeCharAttr = "welcomCharAttr"
+hardLvAttr = "hardLvAttr"
+easyLvAttr = "easyLvAttr"
+mediumLvAttr = "mediumLvAttr"
