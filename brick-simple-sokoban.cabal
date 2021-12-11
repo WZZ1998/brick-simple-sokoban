@@ -18,27 +18,25 @@ build-type:     Simple
 extra-source-files:
     README.md
     ChangeLog.md
-    
 data-dir: resources
 data-files: initData.txt
 
 source-repository head
   type: git
   location: c
-
-
-
+  
 library
   exposed-modules:
       Sokoban
       Lib
       UI
+      Model
+      View
   other-modules:
       Paths_brick_simple_sokoban
   hs-source-dirs:
       src
-
-
+    , src/model
   build-depends:
       base >=4.7 && <5
     , brick
@@ -64,7 +62,7 @@ executable brick-simple-sokoban-exe
 
 test-suite brick-simple-sokoban-test
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: Main.hs
   other-modules:
       Paths_brick_simple_sokoban
   hs-source-dirs:
@@ -73,4 +71,7 @@ test-suite brick-simple-sokoban-test
   build-depends:
       base >=4.7 && <5
     , brick-simple-sokoban
+    , test-framework
+    , test-framework-hunit
+    , HUnit
   default-language: Haskell2010

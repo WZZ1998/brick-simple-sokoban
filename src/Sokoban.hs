@@ -1,48 +1,9 @@
 module Sokoban where
 
-import Data.List
+import Model
 
-import System.Random
-
-type Point = (Int, Int)
-
-data InitData = InitData {
-  level :: String
-  ,hWidth :: Int
-  ,hHeight :: Int
-  ,manPo :: Point
-  ,boxPos :: [Point]
-  ,holePos :: [Point]
-  ,wallBrickPos :: [Point]
-} deriving(Show, Read)
-
--- inlineSampleInitData :: [InitData]
--- inlineSampleInitData = [sample2, sample1]
---   where 
---     sample1 = InitData "Hard" 3 3 (0,0) [(-1,0),(1,0),(0,-2)] [(1,2),(2,-1),(0,-2)] [(1,1),(1,-1),(-1,-1),(-1,1)]
---     sample2 = InitData "Medium" 3 3 (-1,1) 
---           [(-1,0),(0,0),(1,0),(-1,-1)]  [(0,1),(0,2), (-1,2),(-2,2)] [(-2,0),(1,1),(1,-1)]
-
-addBorderProperly :: InitData -> InitData
-addBorderProperly o = o { wallBrickPos = oldWPos ++ bounds}
-  where 
-    oldWPos = wallBrickPos o
-    bounds = genBounduaries (hWidth o) $ hHeight o
-
-
-genBounduaries :: Int -> Int -> [Point]
-genBounduaries wid hei = nub $ yBounds ++ xBounds
-  where
-    yBounds = (foldr1 (++) (map (\f -> map f [(- wid)..wid]) [\x -> (x, (-hei)),\x -> (x,hei)]))
-    xBounds = (foldr1 (++) (map (\f -> map f [(- hei)..hei]) [\y -> (wid,y), \y -> ((-wid),y)]))
-
-
-
-fixedHolesPositions :: [Point]
-fixedHolesPositions = [(-1,1), (-1,2),(-1,3)]
-
-fixedBoxesPositions :: [Point]
-fixedBoxesPositions = [(-4,1), (-4,3),(-4,7)]
+tickTimeMS :: Int
+tickTimeMS = 250
 
 data GameState = GameReady
  | GameSelecting
@@ -51,154 +12,119 @@ data GameState = GameReady
  | GameAborted
  deriving(Show, Eq)
 
-
-type RandomNumber = Int
-
+-- V + C: View and Control
 data World = World {
- rnds :: [RandomNumber]
- ,allInitGameData :: [InitData]
- ,currentInitGameDataIx :: Int
- ,state :: GameState
- ,man :: Man
- ,boxes :: [Box]
- ,holes :: [Hole]
- ,wallBricks :: [WallBrick]
- ,areaWidth :: Int
- ,areaHeight :: Int
- ,currentLevel :: String
- ,runningTicks :: Int
+  --  init data and selector
+   allInitGameData :: [InitData]
+  ,currentInitGameDataIx :: Int 
+
+  -- one play data loaded from init data
+  ,areaHalfWidth :: Int
+  ,areaHalfHeight :: Int
+  ,currentLevel :: String
+  ,man :: Man
+  ,boxes :: [Box]
+  ,holes :: [Hole]
+  ,wallBricks :: [WallBrick]
+
+  --  changing game state
+  ,state :: GameState
+  ,runningTicks :: Int
 }
 
-data Direction = DirectUp
- | DirectDown
- | DirectLeft
- | DirectRight
- deriving(Show, Eq, Ord)
-
-data Man = Man {
-  positionOfMan :: Point
- ,ds :: Double
- ,steps :: Int
- ,direct :: Direction
-}
-
-data Box = Box {
-  positionOfBox :: Point
- }
-
-data Hole = Hole {
-  positionOfHole :: Point
- }
-
-
-data WallBrick = WallBrick {
-  positionOfWallBrick :: Point
- }
-
-initialWorld :: String -> StdGen -> World
-initialWorld initDataStr gen = ww 
-  where
-    ww = launchWorld GameReady rnds properData 0
-    (r0:rnds) = randomRs (0,20) gen
-    properData = map addBorderProperly $ rInitData initDataStr
-
-rInitData :: String -> [InitData]
-rInitData = read 
-
-restartWorld :: World -> World
-restartWorld w = launchWorld GameRunning (rnds w) (allInitGameData w) (currentInitGameDataIx w)
-
-changeNewDataWorld :: Int -> World -> World
-changeNewDataWorld ix w = launchWorld GameSelecting rnds' ad ix
+-- common func: set state, set initData, set index, reload one play data  
+launchWorld :: [InitData]  -> Int -> GameState -> World
+launchWorld ad index st = World ad index hw hh lv man boxes holes wallBricks st zeroTicks
   where 
-    ad = allInitGameData w
-    (r0:rnds') = rnds w
-    
-launchWorld :: GameState ->  [RandomNumber] -> [InitData] -> Int -> World
-launchWorld st rnds ad index = World rnds' ad index st man boxes holes wallBricks w h lv 0
-  where 
-    (r1:r2:rnds') = rnds
+    hw = hWidth iData
+    hh = hHeight iData
     lv = level iData
     man = mkMan $ manPo iData
-    boxes = mkBoxes $ boxPos iData
-    holes = mkHoles $ holePos iData
-    wallBricks = mkWallBricks $ wallBrickPos iData
-    mkBoxes ps = map (\p -> mkBox p) ps
-    mkHoles ps = map (\p -> mkHole p) ps
-    mkWallBricks ps = map(\p -> mkWallBrick p) ps
-    w = hWidth iData * 2 + 1
-    h = hHeight iData * 2 + 1
-    iData = ad !! index
+    boxes = map mkBox $ boxPos iData
+    holes = map mkHole $ holePos iData
+    wallBricks = map mkWallBrick $ wallBrickPos iData
+    iData = ad !! index -- under strong protection
+    zeroTicks = 0
+ 
 
+-- extra :
+-- How to get random number list? gen <- getStdGen in main, then use seed to 
+-- generate inifnite list rnds = randomRs (0,20) gen
 
+-- state tasnform on world
 
+-- create world from initData and set state to GameReady
+initialWorld :: [InitData] -> World
+initialWorld legalInitDataStr = launchWorld legalInitDataStr 0 GameReady
+    
+-- with same index restart game
+restartWorld :: World -> World
+restartWorld w = launchWorld (allInitGameData w) (currentInitGameDataIx w) GameRunning  
 
-mkMan :: Point -> Man
-mkMan positionPoint = Man positionPoint 0 0  DirectUp
+--  change the index and launch a new corresponding world
+changeToIndexWorld :: Int -> World -> World
+changeToIndexWorld ix w = launchWorld (allInitGameData w) ix GameSelecting
 
-mkBox :: Point -> Box 
-mkBox positionPoint = Box positionPoint
+processTick :: World -> World
+processTick w = 
+  case st of
+    GameRunning ->
+      if judgeGameFinished w 
+        then w { state = GameFinished } 
+        else w { runningTicks = nowTks + 1 }
+    GameSelecting -> w { runningTicks = nowTks + 1 }
+    _ -> w
+    where
+      st = state w
+      nowTks = runningTicks w
 
-mkHole :: Point -> Hole 
-mkHole positionPoint = Hole positionPoint
-
-mkWallBrick :: Point -> WallBrick
-mkWallBrick positionPoint  = WallBrick positionPoint
-
-processTimePassing :: World -> World
-processTimePassing w 
- | state w == GameRunning = 
-      if judgeFinishedWorld w then w {state = GameFinished } else w {runningTicks = tk + 1}
- | state w == GameSelecting = w {runningTicks = tk + 1}
- | otherwise = w
-      where tk = runningTicks w
- -- where w' = w {man = m'}
- -- m' = m { colorOfMan = if colorOrig == red then yellow else red}
- -- colorOrig = colorOfMan m
- -- m = man w
-
-
-judgeFinishedWorld :: World -> Bool
-judgeFinishedWorld w = foldr1 (&&) checkList
+judgeGameFinished :: World -> Bool
+judgeGameFinished w = foldr1 (&&) checkList
   where 
     checkList = map (\p -> p `elem` holePos) boxPos
     boxPos = map positionOfBox (boxes w)
     holePos = map positionOfHole (holes w)
 
-processManMoveAction :: Direction -> World -> Man -> World
-processManMoveAction dir w mman
- | pushPoint `elem` wallBrickPos = w { man = mman'}
- | pushPoint `elem` boxPos = processManWithBoxMoveAction dir w mman pushPoint
- | otherwise = w { man = mman''}
-  where
-    mman'' = mman' { positionOfMan = pushPoint, steps = stps + 1}
-    stps = steps mman'
-    mman' = mman { direct = dir }
-    wallBrickPos = map positionOfWallBrick (wallBricks w)
-    boxPos = map positionOfBox (boxes w)
-    pushPoint = getAdjcentPointOnDirection dir (positionOfMan oldMan)
-    oldMan = mman
+processManTryMove :: Direction -> World -> World
+processManTryMove dir w 
+  | pushPo `elem` wallBrickPos = w { man = turnedMan } -- push wall
+  | pushPo `elem` boxPos && (isBoxMovableOnDir dir pushPo w)
+          = w {man = walkedMan, boxes = liveBoxes'} -- push box
+  | pushPo `elem` boxPos = w {man = turnedMan} -- cannot push box
+  | otherwise = w {man = walkedMan} -- just walk
+    where
+      walkedMan = turnedMan { positionOfMan = pushPo, steps = steps turnedMan + 1}
+      turnedMan = mman { direct = dir }
 
-processManWithBoxMoveAction :: Direction -> World -> Man -> Point -> World
-processManWithBoxMoveAction dir w mman boxPo 
- | (pushPushPoint `elem` boxPos) || (pushPushPoint `elem` wallBrickPos) = w { man = mman'}
- | otherwise = w { man = mman'', boxes = boxesOfWorld'}
-  where
-    boxesOfWorld' =
-      map ( \b@(Box p) -> if p == boxPo 
-            then b { positionOfBox = pushPushPoint}
-            else b
-          ) boxesOfWorld
-    mman'' = mman' { positionOfMan = boxPo, steps = stps + 1}
-    stps = steps mman'
-    mman' = mman { direct = dir }
-    pushPushPoint = getAdjcentPointOnDirection dir boxPo
-    wallBrickPos = map positionOfWallBrick (wallBricks w)
-    boxPos = map positionOfBox boxesOfWorld
-    boxesOfWorld = boxes w
+      liveBoxes' = updateOneInBoxes liveBoxes pushPo pushPushPo
+      pushPushPo = getAdjPtOnDir dir pushPo
 
-getAdjcentPointOnDirection :: Direction -> Point -> Point
-getAdjcentPointOnDirection dir orig@(x,y)
+      pushPo = getAdjPtOnDir dir $ positionOfMan mman
+
+      wallBrickPos = map positionOfWallBrick (wallBricks w)
+      boxPos = map positionOfBox liveBoxes
+      liveBoxes = boxes w
+      mman = man w
+
+isBoxMovableOnDir :: Direction -> Point -> World -> Bool
+isBoxMovableOnDir dir boxPo w
+  | (judgeP `elem` boxPos) || (judgeP `elem` wallBrickPos) = False
+  | otherwise = True
+    where
+      judgeP = getAdjPtOnDir dir boxPo
+      wallBrickPos = map positionOfWallBrick (wallBricks w)
+      boxPos = map positionOfBox (boxes w)
+
+updateOneInBoxes :: [Box] -> Point -> Point -> [Box]
+updateOneInBoxes boxes from to =
+  map ( \b@(Box p) -> if p == from
+      then b { positionOfBox = to}
+      else b
+  ) boxes
+
+--  x y translation
+getAdjPtOnDir :: Direction -> Point -> Point
+getAdjPtOnDir dir (x,y)
  | dir == DirectUp = (x, y + 1)
  | dir == DirectDown = (x, y - 1)
  | dir == DirectLeft = (x - 1, y)
