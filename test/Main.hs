@@ -54,10 +54,10 @@ judgeManMoveTest w = assertBool "man move direction not turned."
 
 boxJudgeTest, boxUpdateTest, directPointTest :: World -> Assertion
 boxJudgeTest w = assertBool "box judge wrong."
-    $ False == isBoxMovableOnDir DirectDown (1,0) w
+    $ True == isBoxMovableOnDir DirectDown (1,0) w
 
 boxUpdateTest w = assertBool "box update wrong."
-    $ (0,1) `elem` ( map positionOfBox (updateOneInBoxes (boxes w) (0,0) (0,1)))
+    $ (1,1) `elem` ( map positionOfBox (updateOneInBoxes (boxes w) (1,0) (1,1)))
 
 directPointTest w = assertBool "translate point wrong."
     $ (1,0) == getAdjPtOnDir DirectRight (0,0)
